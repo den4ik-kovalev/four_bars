@@ -8,21 +8,57 @@ from typing import Optional, Callable
 import flet as ft
 
 from src.utils import trigonometry
+from src.utils.logging_meta import LoggingMeta
 from src.service import Service, Grid, Pitch, MelodyData, Triad, MAJOR_CHORDS, MINOR_CHORDS
 
 
-class BarsContainer(ft.UserControl):
+class AppBar(ft.AppBar, metaclass=LoggingMeta):
+
+    def __init__(self,
+                 on_btn_settings_click: Callable,
+                 on_btn_refresh_click: Callable,
+                 on_btn_folder_click: Callable
+                 ) -> None:
+
+        self._btn_theme = ft.IconButton(ft.Icons.BRIGHTNESS_3, on_click=self._on_btn_theme_click)
+        self._btn_settings = ft.IconButton(ft.Icons.SETTINGS, on_click=on_btn_settings_click)
+        self._btn_refresh = ft.IconButton(ft.Icons.REFRESH, on_click=on_btn_refresh_click)
+        self._btn_folder = ft.IconButton(ft.Icons.FOLDER, on_click=on_btn_folder_click)
+
+        super(AppBar, self).__init__(
+            actions=[
+                self._btn_theme,
+                self._btn_settings,
+                self._btn_refresh,
+                self._btn_folder,
+                ft.Container(width=10)
+            ]
+        )
+
+    def _on_btn_theme_click(self, e: ft.ControlEvent) -> None:
+
+        if self.page.theme_mode == ft.ThemeMode.LIGHT:
+            self.page.theme_mode = ft.ThemeMode.DARK
+            self._btn_theme.icon = ft.Icons.BRIGHTNESS_3
+        else:
+            self.page.theme_mode = ft.ThemeMode.LIGHT
+            self._btn_theme.icon = ft.Icons.BRIGHTNESS_5
+
+        self.page.update()
+
+
+class BarsContainer(ft.UserControl, metaclass=LoggingMeta):
 
     class BarRow(ft.UserControl):
 
         class Cell(ft.UserControl):
 
-            def __init__(self, grid: Grid, dark: bool, is_active: bool = True, pitch: Optional[Pitch] = None) -> None:
+            def __init__(self, grid: Grid, dark: bool, active: bool = True, pitch: Optional[Pitch] = None) -> None:
                 super(BarsContainer.BarRow.Cell, self).__init__()
                 self._grid = grid
                 self._dark = dark
                 self._pitch = pitch
-                self._is_active = is_active
+                self._active = active
 
             def build(self) -> ft.Container:
 
@@ -31,24 +67,16 @@ class BarsContainer(ft.UserControl):
                 else:
                     width = 72
 
-                if self._dark:
-                    if self._is_active:
-                        bgcolor = ft.Colors.BLUE_300
-                    else:
-                        bgcolor = ft.Colors.BLUE_GREY_300
-                else:
-                    if self._is_active:
-                        bgcolor = ft.Colors.BLUE_100
-                    else:
-                        bgcolor = ft.Colors.BLUE_GREY_100
-
                 if self._pitch:
-                    content = ft.Text(self._pitch.name, size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK)
+                    content = ft.ElevatedButton(self._pitch.name)
                 else:
                     content = None
 
+                bgcolor = self._get_bgcolor()
+
                 return ft.Container(
                     alignment=ft.alignment.center,
+                    padding=3,
                     border_radius=3,
                     width=width,
                     height=36,
@@ -57,19 +85,20 @@ class BarsContainer(ft.UserControl):
                 )
 
             def switch_active(self) -> None:
-                self._is_active = not self._is_active
-                if self._dark:
-                    if self._is_active:
-                        bgcolor = ft.Colors.BLUE_300
-                    else:
-                        bgcolor = ft.Colors.BLUE_GREY_300
-                else:
-                    if self._is_active:
-                        bgcolor = ft.Colors.BLUE_100
-                    else:
-                        bgcolor = ft.Colors.BLUE_GREY_100
+                self._active = not self._active
+                bgcolor = self._get_bgcolor()
                 self.controls[0].bgcolor = bgcolor
                 self.update()
+
+            def _get_bgcolor(self) -> ft.Colors:
+
+                light_color, dark_color = [ft.Colors.PRIMARY, ft.Colors.INVERSE_PRIMARY]
+                light_grey, dark_grey = [ft.Colors.OUTLINE, ft.Colors.OUTLINE_VARIANT]
+
+                if self._active:
+                    return dark_color if self._dark else light_color
+                else:
+                    return dark_grey if self._dark else light_grey
 
         def __init__(self, grid: Grid) -> None:
             super(BarsContainer.BarRow, self).__init__()
@@ -97,11 +126,18 @@ class BarsContainer(ft.UserControl):
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN
             )
 
-            return ft.Row([
-                self._btn_chord,
-                ft.Container(width=600, height=36, content=self._row_cells),
-                self._switch
-            ])
+            return ft.Row(
+                controls=[
+                    self._btn_chord,
+                    ft.Container(width=600, height=36, content=self._row_cells),
+                    self._switch
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_EVENLY
+            )
+
+        @property
+        def cells(self) -> list[Cell]:
+            return self._row_cells.controls
 
         @property
         def chord(self) -> Optional[Triad]:
@@ -114,7 +150,7 @@ class BarsContainer(ft.UserControl):
             self._btn_chord.update()
 
         @property
-        def is_active(self) -> bool:
+        def active(self) -> bool:
             return self._switch.value
 
         @property
@@ -132,7 +168,7 @@ class BarsContainer(ft.UserControl):
         def params(self) -> dict:
             return {
                 "chord": self.chord,
-                "is_active": self.is_active,
+                "active": self.active,
                 "melody_data": self.melody_data
             }
 
@@ -152,7 +188,7 @@ class BarsContainer(ft.UserControl):
                 BarsContainer.BarRow.Cell(
                     grid=self._grid,
                     dark=dark,
-                    is_active=self.is_active,
+                    active=self.active,
                     pitch=pitch
                 )
                 for dark, pitch in zip(darks, self._melody_data.scheme)
@@ -163,7 +199,7 @@ class BarsContainer(ft.UserControl):
                 self.on_btn_chord_click(self)
 
         def _on_switch_change(self, e: ft.ControlEvent) -> None:
-            for cell in self._row_cells.controls:
+            for cell in self.cells:
                 cell.switch_active()
 
     def __init__(self, grid: Grid) -> None:
@@ -192,14 +228,17 @@ class BarsContainer(ft.UserControl):
             width=800,
             height=400,
             border_radius=15,
-            border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
             padding=10,
-            content=ft.Column([
-                self._bar_1, ft.Divider(),
-                self._bar_2, ft.Divider(),
-                self._bar_3, ft.Divider(),
-                self._bar_4
-            ])
+            content=ft.Column(
+                [
+                    self._bar_1, ft.Divider(),
+                    self._bar_2, ft.Divider(),
+                    self._bar_3, ft.Divider(),
+                    self._bar_4
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_EVENLY
+            )
         )
 
     @property
@@ -237,7 +276,7 @@ class BarsContainer(ft.UserControl):
             self.on_btn_chord_click(idx)
 
 
-class SettingsContainer(ft.UserControl):
+class SettingsContainer(ft.UserControl, metaclass=LoggingMeta):
 
     def __init__(self, grid: Grid):
         super(SettingsContainer, self).__init__()
@@ -282,7 +321,7 @@ class SettingsContainer(ft.UserControl):
             label="Scale",
             value=scales[0] if scales else None,
             border=ft.InputBorder.OUTLINE,
-            border_color=ft.Colors.BLUE_200
+            border_color=ft.Colors.PRIMARY
         )
 
         rhythms = Service.get_rhythm_names()
@@ -291,7 +330,7 @@ class SettingsContainer(ft.UserControl):
             label="Rhythm",
             value=rhythms[0] if rhythms else None,
             border=ft.InputBorder.OUTLINE,
-            border_color=ft.Colors.BLUE_200
+            border_color=ft.Colors.PRIMARY
         )
 
         return ft.Container(
@@ -299,7 +338,7 @@ class SettingsContainer(ft.UserControl):
             width=800,
             height=400,
             border_radius=15,
-            border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
             padding=10,
             content=ft.Column([
                 ft.Text("Grid"),
@@ -338,7 +377,7 @@ class SettingsContainer(ft.UserControl):
             self.on_grid_change(self._grid)
 
 
-class CircleContainer(ft.UserControl):
+class CircleContainer(ft.UserControl, metaclass=LoggingMeta):
 
     def __init__(self):
         super(CircleContainer, self).__init__()
@@ -356,7 +395,7 @@ class CircleContainer(ft.UserControl):
             width=800,
             height=400,
             border_radius=15,
-            border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
             padding=10
         )
 
@@ -415,7 +454,7 @@ class CircleContainer(ft.UserControl):
             self.on_btn_chord_click(e.control.data)
 
 
-class MainStack(ft.UserControl):
+class MainStack(ft.UserControl, metaclass=LoggingMeta):
 
     def __init__(self):
         super(MainStack, self).__init__()
@@ -458,10 +497,18 @@ class MainStack(ft.UserControl):
             "bars": self._cont_bars.bar_params
         }
 
-    def switch_settings_visible(self) -> None:
+    def on_btn_settings_click(self, e: ft.ControlEvent) -> None:
         self._cont_circle.visible = False
         self._cont_settings.visible = not self._cont_settings.visible
         self.update()
+
+    def on_btn_refresh_click(self, e: ft.ControlEvent) -> None:
+        params = self._collect_params()
+        result = Service.process_four_bars(params)
+        self.melody_data = result
+
+    def on_btn_folder_click(self, e: ft.ControlEvent) -> None:
+        Service.open_app_folder()
 
     def _on_bars_chord_click(self, idx: int) -> None:
         self._bar_idx_to_set_chord = idx
@@ -476,99 +523,13 @@ class MainStack(ft.UserControl):
         self._cont_circle.visible = False
         self.update()
 
-
-class ButtonsRow(ft.UserControl):
-
-    def __init__(self) -> None:
-        super(ButtonsRow, self).__init__()
-
-        self._btn_settings: ft.IconButton = ...
-        self._btn_melody: ft.IconButton = ...
-        self._btn_folder: ft.IconButton = ...
-
-        self.on_btn_settings_click: Callable = ...
-        self.on_btn_melody_click: Callable = ...
-        self.on_btn_folder_click: Callable = ...
-
-    def build(self) -> ft.Row:
-
-        self._btn_settings = ft.IconButton(
-            icon=ft.Icons.SETTINGS,
-            width=64,
-            height=64,
-            bgcolor=ft.Colors.WHITE10,
-            on_click=self._on_btn_settings_click
-        )
-
-        self._btn_melody = ft.IconButton(
-            icon=ft.Icons.PLAY_ARROW,
-            width=64,
-            height=64,
-            bgcolor=ft.Colors.WHITE10,
-            on_click=self._on_btn_melody_click
-        )
-
-        self._btn_folder = ft.IconButton(
-            icon=ft.Icons.FOLDER,
-            width=64,
-            height=64,
-            bgcolor=ft.Colors.WHITE10,
-            on_click=self._on_btn_folder_click
-        )
-
-        return ft.Row(
-            [
-                self._btn_settings,
-                self._btn_melody,
-                self._btn_folder
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_EVENLY
-        )
-
-    def _on_btn_settings_click(self, e: ft.ControlEvent) -> None:
-        if callable(self.on_btn_settings_click):
-            self.on_btn_settings_click()
-
-    def _on_btn_melody_click(self, e: ft.ControlEvent) -> None:
-        if callable(self.on_btn_melody_click):
-            self.on_btn_melody_click()
-
-    def _on_btn_folder_click(self, e: ft.ControlEvent) -> None:
-        if callable(self.on_btn_folder_click):
-            self.on_btn_folder_click()
-
-
-class App(ft.UserControl):
-
-    def __init__(self):
-        super(App, self).__init__()
-        self._service = Service()
-        self._main_stack: MainStack = ...
-        self._buttons_row: ButtonsRow = ...
-
-    def build(self) -> ft.Container:
-
-        self._main_stack = MainStack()
-        self._buttons_row = ButtonsRow()
-
-        self._buttons_row.on_btn_settings_click = self._switch_settings_visible
-        self._buttons_row.on_btn_melody_click = self._process_melody
-        self._buttons_row.on_btn_folder_click = self._open_app_folder
-
-        return ft.Container(
-            ft.Column([
-                self._main_stack,
-                self._buttons_row
-            ])
-        )
-
     def _collect_params(self) -> Service.Params:
-        settings = self._main_stack.settings
+        settings = self.settings
         params = Service.Params(
             bars=[
                 Service.Params.BarParams(
                     chord=bar["chord"],
-                    is_active=bar["is_active"],
+                    active=bar["active"],
                     melody_data=bar["melody_data"]
                 )
                 for bar in settings["bars"]
@@ -580,14 +541,3 @@ class App(ft.UserControl):
             rhythm_name=settings["settings"]["rhythm"],
         )
         return params
-
-    def _switch_settings_visible(self) -> None:
-        self._main_stack.switch_settings_visible()
-
-    def _process_melody(self) -> None:
-        params = self._collect_params()
-        result = self._service.process_four_bars(params)
-        self._main_stack.melody_data = result
-
-    def _open_app_folder(self) -> None:
-        self._service.open_app_folder()

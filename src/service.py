@@ -15,7 +15,6 @@ from os import PathLike
 from pathlib import Path
 from typing import Optional
 
-from loguru import logger
 from music21.chord import Chord
 from music21.note import Pitch, Note, Rest, Duration
 from music21.stream import Stream
@@ -209,27 +208,27 @@ def _get_rhythm_stream(rhythm_name: str, chord: Triad) -> Stream:
         chord_notes = []
         if scheme["5"][i] != "-":
             note = Note(pitch_5, duration=duration)
-            note.volume.velocity = 64
+            note.volume.velocity = 48
             chord_notes.append(note)
         if scheme["i"][i] != "-":
             note = Note(pitch_i, duration=duration)
-            note.volume.velocity = 64
+            note.volume.velocity = 48
             chord_notes.append(note)
         if scheme["iii"][i] != "-":
             note = Note(pitch_iii, duration=duration)
-            note.volume.velocity = 64
+            note.volume.velocity = 48
             chord_notes.append(note)
         if scheme["v"][i] != "-":
             note = Note(pitch_v, duration=duration)
-            note.volume.velocity = 64
+            note.volume.velocity = 48
             chord_notes.append(note)
         if scheme["I"][i] != "-":
             note = Note(pitch_I, duration=duration)
-            note.volume.velocity = 64
+            note.volume.velocity = 48
             chord_notes.append(note)
         if scheme["III"][i] != "-":
             note = Note(pitch_III, duration=duration)
-            note.volume.velocity = 20
+            note.volume.velocity = 48
             chord_notes.append(note)
 
         if chord_notes:
@@ -248,7 +247,7 @@ class Service:
         @dataclass
         class BarParams:
             chord: Optional[Triad]
-            is_active: bool
+            active: bool
             melody_data: MelodyData
 
         bars: list[BarParams]
@@ -259,7 +258,6 @@ class Service:
         rhythm_name: Optional[str] = None
 
     @staticmethod
-    @logger.catch
     def process_four_bars(params: Params) -> list[MelodyData]:
 
         scale_pitches = _get_scale_pitches(params.scale_name)
@@ -267,7 +265,7 @@ class Service:
         melodies_data = []
         rhythms = []
         for bar in params.bars:
-            if not bar.is_active:
+            if not bar.active:
                 melodies_data.append(bar.melody_data)
             else:
                 melody_data = _get_random_melody(
@@ -289,11 +287,7 @@ class Service:
         filename = str(len(MIDI_FOLDER.files()) + 1) + ".mid"
         filepath = MIDI_FOLDER.path / filename
         stream.write("midi", filepath)
-
-        try:
-            os.startfile(filepath)
-        except Exception:
-            logger.error(f"Can't start midi file: {filename}")
+        os.startfile(filepath)
 
         return melodies_data
 
